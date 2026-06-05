@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台股回測 + 模擬交易</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  :root {
+    --bg: #0c0e12;
+    --surface: #15181e;
+    --surface-2: #1b1f27;
+    --input: #1f242d;
+    --border: #272d38;
+    --border-soft: #1f242d;
+    --text: #e7eaf0;
+    --muted: #8b93a3;
+    --faint: #5b6472;
+    --accent: #4d8dff;
+    --accent-hover: #6ba0ff;
+    --up: #ff5b6e;
+    --down: #25d07d;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0;
+         font-family: "Songti TC", "Songti SC", "STSong", "Noto Serif TC", "Source Han Serif TC", "新細明體", serif;
+         font-size: 16px; background: var(--bg); color: var(--text);
+         -webkit-font-smoothing: antialiased; }
+  header { display: flex; align-items: center; gap: 12px;
+           padding: 18px 28px; background: linear-gradient(180deg, #161a21 0%, #0e1116 100%);
+           border-bottom: 1px solid var(--border); }
+  header .logo { width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center;
+                 font-size: 20px; background: linear-gradient(135deg, var(--accent), #7c5cff);
+                 box-shadow: 0 4px 14px rgba(77,141,255,.35); }
+  header .t { font-size: 19px; font-weight: 700; letter-spacing: .3px; }
+  header .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .tabs { display: flex; gap: 6px; padding: 14px 28px 0; max-width: 1140px; margin: 0 auto; }
+  .tab { padding: 11px 22px; cursor: pointer; font-weight: 600; font-size: 15px; color: var(--muted);
+         border-radius: 10px 10px 0 0; border: 1px solid transparent; border-bottom: none;
+         transition: all .15s; }
+  .tab:hover { color: var(--text); background: var(--surface-2); }
+  .tab.active { color: var(--text); background: var(--surface);
+                border-color: var(--border); border-bottom-color: var(--surface); }
+  .wrap { max-width: 1140px; margin: 0 auto; padding: 22px 28px 60px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+          padding: 22px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+  .card h3 { margin: 0 0 14px; font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: .3px; }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 7px; letter-spacing: .3px; }
+  input, select { padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px;
+                  font-size: 15px; width: 130px; background: var(--input); color: var(--text);
+                  transition: border-color .15s, box-shadow .15s; outline: none; }
+  input::placeholder { color: var(--faint); }
+  input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(77,141,255,.18); }
+  select { appearance: none; background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%238b93a3' stroke-width='2'><path d='M2 4l4 4 4-4'/></svg>");
+    background-repeat: no-repeat; background-position: right 12px center; padding-right: 30px; }
+  button { padding: 11px 22px; border: 0; border-radius: 10px; font-size: 15px; font-weight: 600;
+           cursor: pointer; color: #fff; background: linear-gradient(135deg, var(--accent), #3b6fe0);
+           box-shadow: 0 3px 10px rgba(77,141,255,.28); transition: transform .12s, box-shadow .12s, filter .12s; }
+  button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 5px 16px rgba(77,141,255,.4); }
+  button:active { transform: translateY(0); }
+  button.gray { background: var(--surface-2); color: var(--text); box-shadow: none; border: 1px solid var(--border); }
+  button.gray:hover { background: var(--input); box-shadow: none; }
+  button.chip { padding: 7px 14px; font-size: 13px; }
+  input[type=date] { font-family: system-ui, -apple-system, sans-serif; color-scheme: dark; }
+  button.green { background: linear-gradient(135deg, #2bd47f, #16a364); box-shadow: 0 3px 10px rgba(37,208,125,.25); }
+  button.red { background: linear-gradient(135deg, #ff5f70, #e23b4c); box-shadow: 0 3px 10px rgba(255,91,110,.25); }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .metric { background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 12px; padding: 16px 16px; }
+  .metric .k { font-size: 12px; color: var(--muted); letter-spacing: .3px; }
+  .metric .v { font-size: 23px; font-weight: 800; margin-top: 6px; letter-spacing: .3px; }
+  .pos { color: var(--up); } .neg { color: var(--down); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 11px 12px; text-align: right; border-bottom: 1px solid var(--border-soft); }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+  thead th { color: var(--muted); font-weight: 600; font-size: 12px; letter-spacing: .5px; border-bottom: 1px solid var(--border); }
+  tbody tr { transition: background .12s; }
+  tbody tr:hover { background: var(--surface-2); }
+  .win-row { background: rgba(77,141,255,.10) !important; }
+  .win-row:hover { background: rgba(77,141,255,.14) !important; }
+  .empty { text-align: center; color: var(--faint); padding: 18px 0; }
+  .hide { display: none; }
+  .msg { color: var(--up); font-size: 14px; margin-left: 6px; align-self: center; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 12px; line-height: 1.7; }
+  .accent { color: var(--accent); }
+  .strat-params { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { color: var(--accent-hover); }
+  canvas { margin-top: 20px; max-height: 340px; }
+  .desc { color: var(--muted); font-size: 13px; }
+  .bg-zoo { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+  .bg-zoo span { position: absolute; bottom: -70px; width: 44px; height: 44px; opacity: 0;
+                 animation: floatUp linear infinite; will-change: transform; }
+  .bg-zoo span svg { width: 100%; height: 100%; display: block; }
+  @keyframes floatUp { 0%{transform:translateY(0) rotate(0);opacity:0} 12%{opacity:.14} 88%{opacity:.14} 100%{transform:translateY(-112vh) rotate(36deg);opacity:0} }
+  header, .tabs, .wrap { position: relative; z-index: 1; }
+  .mascot { position: fixed; right: 24px; bottom: 22px; z-index: 50; cursor: pointer; text-align: center; user-select: none; }
+  .mascot .face { display: inline-block; transition: transform .25s;
+                  filter: drop-shadow(0 5px 10px rgba(0,0,0,.55)); animation: bob 3s ease-in-out infinite; }
+  .mascot .face svg { width: 72px; height: 72px; display: block; }
+  .mascot:hover .face { transform: scale(1.18) rotate(-8deg); }
+  @keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-7px)} }
+  .mascot .bubble { position: absolute; right: 0; bottom: 64px; min-width: 132px; max-width: 230px;
+                    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+                    font-size: 13px; line-height: 1.6; padding: 10px 13px; border-radius: 14px;
+                    box-shadow: 0 8px 22px rgba(0,0,0,.5); opacity: 0; transform: translateY(6px) scale(.96);
+                    transition: opacity .2s, transform .2s; pointer-events: none; }
+  .mascot .bubble.show { opacity: 1; transform: translateY(0) scale(1); }
+  .mascot .bubble::after { content: ''; position: absolute; right: 26px; bottom: -7px; width: 12px; height: 12px;
+                           background: var(--surface-2); border-right: 1px solid var(--border);
+                           border-bottom: 1px solid var(--border); transform: rotate(45deg); }
+</style>
+</head>
+<body>
+<div class="bg-zoo" id="bgZoo"></div>
+<div class="mascot" id="mascot" onclick="mascotTalk()">
+  <div class="bubble" id="mascotBubble"></div>
+  <div class="face" id="mascotFace"></div>
+</div>
+<header>
+  <div class="logo">📈</div>
+  <div>
+    <div class="t">台股回測 + 模擬交易</div>
+    <div class="sub">資料來源：FinMind · 純前端、僅供學習，非投資建議</div>
+  </div>
+</header>
+<div class="tabs">
+  <div class="tab active" data-tab="bt">🔬 策略回測</div>
+  <div class="tab" data-tab="pt">💵 模擬交易</div>
+</div>
+
+<div class="wrap" id="bt">
+  <div class="card">
+    <div class="row">
+      <div><label>股票代號</label><input id="bt-stock" value="2330" placeholder="如 2330"></div>
+      <div><label>開始日期</label><input id="bt-start" type="date" style="width:160px"></div>
+      <div><label>結束日期</label><input id="bt-end" type="date" style="width:160px"></div>
+      <button onclick="runAuto()">🚀 自動回測</button>
+      <span class="msg" id="bt-msg"></span>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <span style="font-size:13px;color:var(--muted)">快速：</span>
+      <button class="gray chip" onclick="quickRange(6)">近半年</button>
+      <button class="gray chip" onclick="quickRange(12)">近一年</button>
+      <button class="gray chip" onclick="quickRange(24)">近兩年</button>
+      <button class="gray chip" onclick="quickRange(36)">近三年</button>
+      <button class="gray chip" onclick="quickRangeYTD()">今年以來</button>
+    </div>
+    <div class="hint">只要輸入股票代號就好，系統會自動用幾種常見方法各跑一遍，告訴你哪種最賺。已計入手續費與證交稅。
+      &nbsp;<a href="#" id="adv-toggle">⚙️ 我想自己設定參數</a>
+    </div>
+    <div id="adv-box" class="hide" style="margin-top:18px;border-top:1px dashed var(--border);padding-top:18px">
+      <div class="row">
+        <div><label>初始資金</label><input id="bt-capital" type="number" value="1000000"></div>
+        <div><label>策略</label>
+          <select id="bt-strategy">
+            <option value="ma" selected>均線交叉</option>
+            <option value="rsi">RSI 超買超賣</option>
+            <option value="kd">KD 指標</option>
+            <option value="bh">買進持有</option>
+          </select>
+        </div>
+      </div>
+      <div class="strat-params" id="ma-params" style="margin-top:16px">
+        <div><label>短均線(日)</label><input id="bt-short" type="number" value="5" style="width:96px"></div>
+        <div><label>長均線(日)</label><input id="bt-long" type="number" value="20" style="width:96px"></div>
+      </div>
+      <div class="strat-params hide" id="rsi-params" style="margin-top:16px">
+        <div><label>RSI 週期</label><input id="bt-period" type="number" value="14" style="width:96px"></div>
+        <div><label>超賣(買進)</label><input id="bt-oversold" type="number" value="30" style="width:96px"></div>
+        <div><label>超買(賣出)</label><input id="bt-overbought" type="number" value="70" style="width:96px"></div>
+      </div>
+      <div class="strat-params hide" id="kd-params" style="margin-top:16px">
+        <div><label>KD 週期(K9)</label><input id="bt-kdperiod" type="number" value="9" style="width:96px"></div>
+        <div><label>K 低於(買進)</label><input id="bt-kdlow" type="number" value="20" style="width:96px"></div>
+        <div><label>K 高於(賣出)</label><input id="bt-kdhigh" type="number" value="80" style="width:96px"></div>
+      </div>
+      <div style="margin-top:18px"><button class="gray" onclick="runBacktest()">用我的設定回測</button></div>
+    </div>
+  </div>
+
+  <div class="card hide" id="auto-result">
+    <div id="auto-headline" style="font-size:19px;font-weight:800;line-height:1.7;margin-bottom:6px;text-align:center"></div>
+    <div class="hint" style="margin-top:0;margin-bottom:16px">下表是同一檔股票、同一段時間，用不同方法操作的結果。藍底那列就是最賺的方法。</div>
+    <table><thead><tr><th>操作方法</th><th>怎麼做</th><th>報酬率</th><th>最大下跌</th><th>進出次數</th><th>最後變多少</th></tr></thead>
+      <tbody id="auto-table"></tbody></table>
+    <canvas id="auto-chart"></canvas>
+  </div>
+
+  <div class="card hide" id="bt-result">
+    <div class="metrics" id="bt-metrics"></div>
+    <canvas id="bt-chart"></canvas>
+  </div>
+  <div class="card hide" id="bt-trades-card">
+    <h3>交易明細</h3>
+    <table><thead><tr><th>日期</th><th>動作</th><th>價格</th><th>股數</th><th>單筆損益</th></tr></thead>
+      <tbody id="bt-trades"></tbody></table>
+  </div>
+</div>
+
+<div class="wrap hide" id="pt">
+  <div class="card"><div class="metrics" id="pt-summary"></div></div>
+  <div class="card">
+    <h3>下單</h3>
+    <div class="row">
+      <div><label>股票代號</label><input id="pt-stock" placeholder="如 2330"></div>
+      <div><label>股數</label><input id="pt-shares" type="number" value="1000"></div>
+      <button class="green" onclick="trade('buy')">買進</button>
+      <button class="red" onclick="trade('sell')">賣出</button>
+      <button class="gray" onclick="refreshPaper()">重新整理報價</button>
+      <button class="gray" onclick="resetPaper()">重置帳戶</button>
+      <span class="msg" id="pt-msg"></span>
+    </div>
+    <div class="hint">以「最近收盤價」成交（FinMind 為日線資料，非盤中即時）。同樣計入手續費與證交稅。資料只存在你這台裝置的瀏覽器。</div>
+  </div>
+  <div class="card">
+    <h3>持股部位</h3>
+    <table><thead><tr><th>代號</th><th>名稱</th><th>股數</th><th>均價</th><th>現價</th><th>市值</th><th>未實現損益</th><th>報酬率</th></tr></thead>
+      <tbody id="pt-positions"></tbody></table>
+  </div>
+  <div class="card">
+    <h3>交易紀錄</h3>
+    <table><thead><tr><th>時間</th><th>代號</th><th>名稱</th><th>動作</th><th>股數</th><th>價格</th><th>金額</th></tr></thead>
+      <tbody id="pt-log"></tbody></table>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => Math.round(n ?? 0).toLocaleString('en-US');
+const pct = n => n == null ? '—' : (n * 100).toFixed(2) + '%';
+const cls = n => n > 0 ? 'pos' : (n < 0 ? 'neg' : '');
+const FEE = 0.001425, TAX = 0.003, INIT_CASH = 1000000;
+
+/* ---------- 手繪小動物 ---------- */
+const OL = '#7a6a5d';
+const eyesDot = (lx,rx,y) => `<ellipse cx="${lx}" cy="${y}" rx="2.6" ry="3.2" fill="#4a4039"/><ellipse cx="${rx}" cy="${y}" rx="2.6" ry="3.2" fill="#4a4039"/><circle cx="${lx+1}" cy="${y-1.2}" r="1" fill="#fff"/><circle cx="${rx+1}" cy="${y-1.2}" r="1" fill="#fff"/>`;
+const A = inner => `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+function catSVG(mood) {
+  const base = (eyes, mouth, extra) => `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+    <g stroke="${OL}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M47 55 C 61 55 60 39 50 38" fill="#f4e6d2"/>
+      <path d="M32 34 C 45 34 47 48 45 55 C 44 60 38 62 32 62 C 26 62 20 60 19 55 C 17 48 19 34 32 34 Z" fill="#f4e6d2"/>
+      <ellipse cx="26" cy="60" rx="4.6" ry="3" fill="#fbf3e7"/><ellipse cx="38" cy="60" rx="4.6" ry="3" fill="#fbf3e7"/>
+      <path d="M20 19 C 16 8 23 7 28 14 Z" fill="#f4e6d2"/><path d="M44 19 C 48 8 41 7 36 14 Z" fill="#f4e6d2"/>
+      <path d="M32 8 C 44 8 51 16 51 27 C 51 39 43 46 32 46 C 21 46 13 39 13 27 C 13 16 20 8 32 8 Z" fill="#f7ecdb"/></g>
+    <path d="M21 16 C 19 11 23 10.5 26 14 C 24.5 16 22.5 16.5 21 16 Z" fill="#f3b4ad"/>
+    <path d="M43 16 C 45 11 41 10.5 38 14 C 39.5 16 41.5 16.5 43 16 Z" fill="#f3b4ad"/>
+    <g stroke="#dcc6aa" stroke-width="1.4" stroke-linecap="round" fill="none">
+      <path d="M13 29 C 8 28 5 29 3 31"/><path d="M13 33 C 8 33 5 35 3 37"/>
+      <path d="M51 29 C 56 28 59 29 61 31"/><path d="M51 33 C 56 33 59 35 61 37"/></g>
+    ${eyes}<path d="M32 32.5 c -2 0 -2.2 2 0 2.9 c 2.2 -0.9 2 -2.9 0 -2.9 Z" fill="#e6959b"/>${mouth}${extra}</svg>`;
+  const bigEyes = '<ellipse cx="25" cy="28" rx="3.4" ry="4.3" fill="#4a4039"/><ellipse cx="39" cy="28" rx="3.4" ry="4.3" fill="#4a4039"/><circle cx="26.4" cy="26.3" r="1.3" fill="#fff"/><circle cx="40.4" cy="26.3" r="1.3" fill="#fff"/>';
+  const blush = '<ellipse cx="18.5" cy="33" rx="3.4" ry="2.2" fill="#f6b3ad" opacity=".75"/><ellipse cx="45.5" cy="33" rx="3.4" ry="2.2" fill="#f6b3ad" opacity=".75"/>';
+  const smile = '<path d="M32 35.4 v1.4 M28.6 37.2 C 30 38.4 31.4 38 32 36.8 M35.4 37.2 C 34 38.4 32.6 38 32 36.8" fill="none" stroke="#9a7b6a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>';
+  const M = {
+    neutral: [bigEyes, '<path d="M32 35.4 v1.6 M29 37 C 30.4 38 31.4 37.6 32 36.7 M35 37 C 33.6 38 32.6 37.6 32 36.7" fill="none" stroke="#9a7b6a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>', ''],
+    content: [bigEyes, smile, blush],
+    happy:   ['<path d="M21 28 C 23 24 27 24 29 28" fill="none" stroke="#4a4039" stroke-width="2.6" stroke-linecap="round"/><path d="M35 28 C 37 24 41 24 43 28" fill="none" stroke="#4a4039" stroke-width="2.6" stroke-linecap="round"/>',
+              '<path d="M27 36 C 30 40 34 40 37 36" fill="none" stroke="#9a7b6a" stroke-width="1.8" stroke-linecap="round"/>',
+              blush + '<path d="M9 14 l1.1 3.1 l3.1 1.1 l-3.1 1.1 l-1.1 3.1 l-1.1 -3.1 l-3.1 -1.1 l3.1 -1.1 Z" fill="#ffd56b"/><path d="M53 12 l.8 2.2 l2.2 .8 l-2.2 .8 l-.8 2.2 l-.8 -2.2 l-2.2 -.8 l2.2 -.8 Z" fill="#ffd56b"/>'],
+    worried: ['<ellipse cx="25" cy="28" rx="3.6" ry="4.6" fill="#4a4039"/><ellipse cx="39" cy="28" rx="3.6" ry="4.6" fill="#4a4039"/><circle cx="26.5" cy="26" r="1.4" fill="#fff"/><circle cx="40.5" cy="26" r="1.4" fill="#fff"/>',
+              '<path d="M28.5 37.6 C 30 36.4 34 36.4 35.5 37.6" fill="none" stroke="#9a7b6a" stroke-width="1.5" stroke-linecap="round"/>',
+              '<path d="M48 18 C 50.6 22 50.6 25 48 25.4 C 45.4 25 45.4 22 48 18 Z" fill="#8fd0ff"/>'],
+    sad:     ['<path d="M21 26 C 23 30 27 30 29 26" fill="none" stroke="#4a4039" stroke-width="2.6" stroke-linecap="round"/><path d="M35 26 C 37 30 41 30 43 26" fill="none" stroke="#4a4039" stroke-width="2.6" stroke-linecap="round"/>',
+              '<path d="M28.5 38 C 30 36.4 34 36.4 35.5 38" fill="none" stroke="#9a7b6a" stroke-width="1.6" stroke-linecap="round"/>',
+              '<path d="M22 31 C 19.4 35 19.4 38 22 38.4 C 24.6 38 24.6 35 22 31 Z" fill="#8fd0ff"/>'],
+  };
+  const m = M[mood] || M.neutral;
+  return base(m[0], m[1], m[2]);
+}
+const CAT_BG = catSVG('content');
+const DOG = A(`<g stroke="${OL}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
+  <path d="M32 35 C 44 35 46 48 44 55 C 43 60 38 62 32 62 C 26 62 21 60 20 55 C 18 48 20 35 32 35 Z" fill="#f0a860"/>
+  <path d="M12 20 C 8 30 10 40 18 40 C 18 30 18 24 21 19 Z" fill="#e0954c"/>
+  <path d="M52 20 C 56 30 54 40 46 40 C 46 30 46 24 43 19 Z" fill="#e0954c"/>
+  <path d="M32 9 C 44 9 50 17 50 26 C 50 37 42 43 32 43 C 22 43 14 37 14 26 C 14 17 20 9 32 9 Z" fill="#f4b271"/>
+  <path d="M22 30 C 22 39 27 43 32 43 C 37 43 42 39 42 30 C 38 33 26 33 22 30 Z" fill="#fbf1e4"/></g>
+  ${eyesDot(25,39,27)}<ellipse cx="32" cy="33" rx="3" ry="2.2" fill="#4a4039"/>
+  <path d="M32 35 v3" stroke="#b98a5e" stroke-width="1.5" stroke-linecap="round"/>`);
+const RABBIT = A(`<g stroke="${OL}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
+  <path d="M22 14 C 18 4 24 2 27 12 C 28 17 27 22 25 24 C 22 23 21 19 22 14 Z" fill="#f3eef2"/>
+  <path d="M42 14 C 46 4 40 2 37 12 C 36 17 37 22 39 24 C 42 23 43 19 42 14 Z" fill="#f3eef2"/>
+  <path d="M32 32 C 45 32 47 47 45 55 C 44 60 38 62 32 62 C 26 62 20 60 19 55 C 17 47 19 32 32 32 Z" fill="#f6f2f5"/>
+  <ellipse cx="26" cy="60" rx="4.4" ry="3" fill="#fff"/><ellipse cx="38" cy="60" rx="4.4" ry="3" fill="#fff"/>
+  <path d="M32 18 C 43 18 49 25 49 33 C 49 43 42 48 32 48 C 22 48 15 43 15 33 C 15 25 21 18 32 18 Z" fill="#fbf8fb"/></g>
+  <path d="M23 11 C 21 6 24 5 26 11 C 26.5 14 26 17 25 18 C 23.5 17 23 14 23 11 Z" fill="#f3b4ad"/>
+  <path d="M41 11 C 43 6 40 5 38 11 C 37.5 14 38 17 39 18 C 40.5 17 41 14 41 11 Z" fill="#f3b4ad"/>
+  ${eyesDot(25,39,33)}<path d="M30 37 C 31 38.4 33 38.4 34 37" fill="none" stroke="#e6959b" stroke-width="1.5" stroke-linecap="round"/>
+  <ellipse cx="18" cy="38" rx="3" ry="2" fill="#f6b3ad" opacity=".7"/><ellipse cx="46" cy="38" rx="3" ry="2" fill="#f6b3ad" opacity=".7"/>`);
+const BEAR = A(`<g stroke="${OL}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
+  <path d="M32 33 C 45 33 47 48 45 55 C 44 60 38 62 32 62 C 26 62 20 60 19 55 C 17 48 19 33 32 33 Z" fill="#c79a6d"/>
+  <circle cx="17" cy="17" r="7" fill="#c79a6d"/><circle cx="47" cy="17" r="7" fill="#c79a6d"/>
+  <path d="M32 9 C 44 9 51 17 51 27 C 51 38 43 44 32 44 C 21 44 13 38 13 27 C 13 17 20 9 32 9 Z" fill="#cda575"/>
+  <ellipse cx="32" cy="34" rx="9" ry="7" fill="#ead8bd"/></g>
+  <circle cx="17" cy="17" r="3.2" fill="#e2c39c"/><circle cx="47" cy="17" r="3.2" fill="#e2c39c"/>
+  ${eyesDot(25,39,26)}<ellipse cx="32" cy="31" rx="3" ry="2.2" fill="#4a4039"/>
+  <path d="M32 33 v2.5 M29 36.5 C 30.5 37.5 31.4 37.2 32 36 M35 36.5 C 33.5 37.5 32.6 37.2 32 36" fill="none" stroke="#7a5c3e" stroke-width="1.4" stroke-linecap="round"/>`);
+const CHICK = A(`<g stroke="${OL}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
+  <path d="M32 30 C 47 30 50 46 47 55 C 45 60 39 62 32 62 C 25 62 19 60 17 55 C 14 46 17 30 32 30 Z" fill="#ffd56b"/>
+  <path d="M16 38 C 9 38 8 46 15 47 C 14 43 14 41 17 39 Z" fill="#fdca54"/>
+  <path d="M48 38 C 55 38 56 46 49 47 C 50 43 50 41 47 39 Z" fill="#fdca54"/>
+  <circle cx="32" cy="24" r="15" fill="#ffdc7e"/></g>
+  ${eyesDot(26,38,23)}<path d="M28.5 28 L35.5 28 L32 32.5 Z" fill="#f2933a" stroke="${OL}" stroke-width="1.6" stroke-linejoin="round"/>
+  <ellipse cx="20" cy="28" rx="3" ry="2" fill="#ffb24d" opacity=".7"/><ellipse cx="44" cy="28" rx="3" ry="2" fill="#ffb24d" opacity=".7"/>`);
+const PANDA = A(`<g stroke="${OL}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">
+  <circle cx="17" cy="16" r="7" fill="#3d3a3a"/><circle cx="47" cy="16" r="7" fill="#3d3a3a"/>
+  <path d="M32 33 C 45 33 47 48 45 55 C 44 60 38 62 32 62 C 26 62 20 60 19 55 C 17 48 19 33 32 33 Z" fill="#f6f2f5"/>
+  <ellipse cx="24" cy="58" rx="4" ry="3" fill="#3d3a3a"/><ellipse cx="40" cy="58" rx="4" ry="3" fill="#3d3a3a"/>
+  <path d="M32 9 C 44 9 51 17 51 27 C 51 38 43 44 32 44 C 21 44 13 38 13 27 C 13 17 20 9 32 9 Z" fill="#fbf8fb"/></g>
+  <ellipse cx="24" cy="26" rx="4.2" ry="5.4" fill="#3d3a3a" transform="rotate(-14 24 26)"/>
+  <ellipse cx="40" cy="26" rx="4.2" ry="5.4" fill="#3d3a3a" transform="rotate(14 40 26)"/>
+  <circle cx="24" cy="27" r="1.7" fill="#fff"/><circle cx="40" cy="27" r="1.7" fill="#fff"/>
+  <ellipse cx="32" cy="33" rx="2.6" ry="2" fill="#3d3a3a"/>
+  <path d="M32 35 v2 M29 37.5 C 30.5 38.5 31.4 38.2 32 37 M35 37.5 C 33.5 38.5 32.6 38.2 32 37" fill="none" stroke="#6b5d50" stroke-width="1.4" stroke-linecap="round"/>`);
+const ZOO = [CAT_BG, DOG, RABBIT, BEAR, CHICK, PANDA];
+(function initZoo() {
+  const box = document.getElementById('bgZoo');
+  for (let i = 0; i < 16; i++) {
+    const s = document.createElement('span');
+    s.innerHTML = ZOO[i % ZOO.length];
+    s.style.left = (Math.random() * 96) + 'vw';
+    const sz = (32 + Math.random() * 30);
+    s.style.width = sz + 'px'; s.style.height = sz + 'px';
+    s.style.animationDuration = (18 + Math.random() * 22) + 's';
+    s.style.animationDelay = (-Math.random() * 35) + 's';
+    box.appendChild(s);
+  }
+})();
+const TIPS = [
+  '記得：回測賺錢不等於未來賺錢，過去不代表未來喔！',
+  '分散投資、別 All in，回測貓也怕跌停。',
+  '手續費和證交稅都幫你算進去了，這隻貓很誠實。',
+  '看不懂那些參數？直接按「自動回測」就好。',
+  '長期投資加上紀律，通常比每天盯盤更有用。',
+  '虧損時先別慌，看看是不是這個方法不適合這檔股票。',
+  '模擬交易賠光也沒關係，按「重置帳戶」就復活了。',
+];
+let mascotTimer;
+function setMascot(mood, text) {
+  document.getElementById('mascotFace').innerHTML = catSVG(mood);
+  const b = document.getElementById('mascotBubble');
+  b.textContent = text; b.classList.add('show');
+  clearTimeout(mascotTimer); mascotTimer = setTimeout(() => b.classList.remove('show'), 6500);
+}
+function mascotTalk() { setMascot('content', TIPS[Math.floor(Math.random() * TIPS.length)]); }
+function mascotReact(ret) {
+  if (ret >= 0.5) setMascot('happy', `哇！賺了 ${(ret*100).toFixed(1)}%，回測貓幫你開香檳！`);
+  else if (ret > 0) setMascot('content', `小賺 ${(ret*100).toFixed(1)}%，穩穩的最好。`);
+  else if (ret > -0.1) setMascot('worried', `小虧 ${(ret*100).toFixed(1)}%，再換個方法試試吧。`);
+  else setMascot('sad', `跌了 ${(ret*100).toFixed(1)}%⋯還好是回測，秀秀。`);
+}
+setTimeout(() => setMascot('neutral', '嗨～我是回測貓，輸入股票代號按「自動回測」試試吧！'), 800);
+
+/* ---------- Chart.js ---------- */
+Chart.defaults.color = '#8b93a3';
+Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+Chart.defaults.font.family = "'Songti TC','Songti SC','STSong','Noto Serif TC',serif";
+const CHART_OPTS = {
+  responsive: true, interaction: { mode: 'index', intersect: false },
+  plugins: { legend: { position: 'top', labels: { color: '#cbd5e1', usePointStyle: true, pointStyle: 'line' } },
+             tooltip: { backgroundColor: '#1b1f27', borderColor: '#272d38', borderWidth: 1,
+                        titleColor: '#e7eaf0', bodyColor: '#cbd5e1', padding: 10 } },
+  scales: { x: { ticks: { maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+            y: { ticks: { callback: v => fmt(v) }, grid: { color: 'rgba(255,255,255,0.04)' } } }
+};
+
+/* ---------- 資料來源：FinMind（瀏覽器直接抓） ---------- */
+const FINMIND = 'https://api.finmindtrade.com/api/v4/data';
+const NAME_CACHE = {};
+async function fetchHistory(stock, start, end) {
+  const url = `${FINMIND}?dataset=TaiwanStockPrice&data_id=${encodeURIComponent(stock)}&start_date=${start}&end_date=${end}`;
+  const res = await fetch(url);
+  const j = await res.json();
+  if (j.status !== 200) throw new Error(j.msg || 'FinMind 回應異常');
+  const data = (j.data || []).filter(d => d.close != null && d.close > 0)
+    .map(d => ({ date: d.date, open: d.open, high: d.max, low: d.min, close: d.close }));
+  data.sort((a, b) => a.date < b.date ? -1 : 1);
+  return data;
+}
+async function fetchName(stock) {
+  if (NAME_CACHE[stock]) return NAME_CACHE[stock];
+  try {
+    const j = await (await fetch(`${FINMIND}?dataset=TaiwanStockInfo&data_id=${encodeURIComponent(stock)}`)).json();
+    const arr = j.data || [];
+    const row = arr.find(r => r.stock_id === stock) || arr[0];
+    const nm = row && row.stock_name ? row.stock_name : stock;
+    NAME_CACHE[stock] = nm; return nm;
+  } catch (e) { return stock; }
+}
+async function quote(stock) {
+  const end = ymd(new Date());
+  const s = new Date(); s.setDate(s.getDate() - 16);
+  const rows = await fetchHistory(stock, ymd(s), end);
+  if (!rows.length) return null;
+  return { price: rows[rows.length - 1].close, name: await fetchName(stock) };
+}
+
+/* ---------- 回測引擎（瀏覽器端） ---------- */
+function sma(c, i, n) { if (i + 1 < n) return null; let s = 0; for (let k = i - n + 1; k <= i; k++) s += c[k]; return s / n; }
+function rsiSeries(c, period) {
+  const n = c.length, out = new Array(n).fill(null);
+  for (let i = period; i < n; i++) { let g = 0, l = 0;
+    for (let k = i - period + 1; k <= i; k++) { const ch = c[k] - c[k - 1]; if (ch >= 0) g += ch; else l -= ch; }
+    const ag = g / period, al = l / period; out[i] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
+  } return out;
+}
+function kdSeries(rows, period) {
+  const n = rows.length, out = new Array(n).fill(null); let K = 50, D = 50;
+  for (let i = 0; i < n; i++) {
+    if (i < period - 1) continue;
+    let hi = -Infinity, lo = Infinity;
+    for (let k = i - period + 1; k <= i; k++) { if (rows[k].high > hi) hi = rows[k].high; if (rows[k].low < lo) lo = rows[k].low; }
+    const close = rows[i].close, rsv = hi === lo ? 50 : (close - lo) / (hi - lo) * 100;
+    K = 2/3 * K + 1/3 * rsv; D = 2/3 * D + 1/3 * K; out[i] = K;
+  } return out;
+}
+function computeSignals(rows, p) {
+  const c = rows.map(r => r.close), n = c.length, sig = new Array(n).fill(0);
+  if (p.strategy === 'ma') {
+    const s = p.short, l = p.long;
+    for (let i = 1; i < n; i++) { const ms = sma(c,i,s), ml = sma(c,i,l), pms = sma(c,i-1,s), pml = sma(c,i-1,l);
+      if (ms==null||ml==null||pms==null||pml==null) continue;
+      if (pms<=pml && ms>ml) sig[i]=1; else if (pms>=pml && ms<ml) sig[i]=-1; }
+  } else if (p.strategy === 'rsi') {
+    const rs = rsiSeries(c, p.period), ob = p.overbought, osv = p.oversold;
+    for (let i = 1; i < n; i++) { if (rs[i]==null||rs[i-1]==null) continue;
+      if (rs[i-1]>=osv && rs[i]<osv) sig[i]=1; else if (rs[i-1]<=ob && rs[i]>ob) sig[i]=-1; }
+  } else if (p.strategy === 'kd') {
+    const ks = kdSeries(rows, p.kd_period), lo = p.kd_low, hi = p.kd_high;
+    for (let i = 1; i < n; i++) { if (ks[i]==null) continue; if (ks[i]<lo) sig[i]=1; else if (ks[i]>hi) sig[i]=-1; }
+  }
+  return sig;
+}
+function runBacktestJS(rows, p) {
+  const c = rows.map(r => r.close), dates = rows.map(r => r.date), n = c.length;
+  if (n < 2) return { error: '資料不足，無法回測' };
+  const cap = p.capital || INIT_CASH, strat = p.strategy;
+  const sig = strat === 'bh' ? null : computeSignals(rows, p);
+  let cash = cap, shares = 0, cost = 0; const trades = [], equity = [];
+  for (let i = 0; i < n; i++) {
+    const price = c[i];
+    const doBuy = (strat === 'bh' && i === 0) || (strat !== 'bh' && sig[i] === 1);
+    const doSell = strat !== 'bh' && sig[i] === -1;
+    if (doBuy && shares === 0 && cash > 0) {
+      shares = cash / (price * (1 + FEE)); cost = cash; cash = 0;
+      trades.push({ date: dates[i], action: '買進', price, shares: Math.round(shares), pnl: null });
+    } else if (doSell && shares > 0) {
+      const proceeds = shares * price * (1 - FEE - TAX), pnl = proceeds - cost; cash += proceeds;
+      trades.push({ date: dates[i], action: '賣出', price, shares: Math.round(shares), pnl: Math.round(pnl) }); shares = 0;
+    }
+    equity.push(Math.round(cash + shares * price));
+  }
+  const final = cash + shares * c[n - 1];
+  const totalReturn = final / cap - 1, years = n / 252;
+  const annual = (years > 0 && final > 0) ? Math.pow(final / cap, 1 / years) - 1 : 0;
+  let peak = -Infinity, mdd = 0; for (const e of equity) { if (e > peak) peak = e; if (peak > 0) mdd = Math.min(mdd, e / peak - 1); }
+  const sells = trades.filter(t => t.action === '賣出'), wins = sells.filter(t => (t.pnl || 0) > 0);
+  const winRate = sells.length ? wins.length / sells.length : null;
+  const bhShares = cap / (c[0] * (1 + FEE)), bhFinal = bhShares * c[n - 1] * (1 - FEE - TAX), bhReturn = bhFinal / cap - 1;
+  const bhEquity = c.map(x => Math.round(cap * (x / c[0])));
+  return { dates, strat_equity: equity, bh_equity: bhEquity, trades,
+    metrics: { final: Math.round(final), total_return: totalReturn, annual, max_drawdown: mdd, win_rate: winRate, num_trades: sells.length, bh_return: bhReturn } };
+}
+const PRESETS = [
+  { key:'bh', label:'無腦長抱', desc:'買進後一直持有不賣', params:{ strategy:'bh' } },
+  { key:'ma_s', label:'短線均線', desc:'5日線突破20日線買進、跌破賣出', params:{ strategy:'ma', short:5, long:20 } },
+  { key:'ma_l', label:'中長線均線', desc:'20日線突破60日線買進、跌破賣出', params:{ strategy:'ma', short:20, long:60 } },
+  { key:'rsi', label:'低買高賣', desc:'跌深(RSI<30)買進、漲多(RSI>70)賣出', params:{ strategy:'rsi', period:14, oversold:30, overbought:70 } },
+  { key:'kd', label:'KD 指標', desc:'K值<20買進、>80賣出', params:{ strategy:'kd', kd_period:9, kd_low:20, kd_high:80 } },
+];
+
+/* ---------- tabs / 切換 ---------- */
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  $('bt').classList.toggle('hide', t.dataset.tab !== 'bt');
+  $('pt').classList.toggle('hide', t.dataset.tab !== 'pt');
+  if (t.dataset.tab === 'pt') refreshPaper();
+});
+$('adv-toggle').onclick = e => { e.preventDefault(); $('adv-box').classList.toggle('hide'); };
+$('bt-strategy').onchange = e => {
+  $('ma-params').classList.toggle('hide', e.target.value !== 'ma');
+  $('rsi-params').classList.toggle('hide', e.target.value !== 'rsi');
+  $('kd-params').classList.toggle('hide', e.target.value !== 'kd');
+};
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function quickRange(months) { const t = new Date(); $('bt-end').value = ymd(t); const s = new Date(t); s.setMonth(s.getMonth() - months); $('bt-start').value = ymd(s); }
+function quickRangeYTD() { const t = new Date(); $('bt-end').value = ymd(t); $('bt-start').value = `${t.getFullYear()}-01-01`; }
+quickRange(12);
+
+/* ---------- 自動回測 ---------- */
+let autoChart;
+async function runAuto() {
+  const stock = $('bt-stock').value.trim();
+  const start = $('bt-start').value, end = $('bt-end').value;
+  if (!stock) { $('bt-msg').textContent = '請輸入股票代號'; return; }
+  $('bt-msg').textContent = '抓資料、自動試算中…';
+  let rows;
+  try { rows = await fetchHistory(stock, start, end); }
+  catch (e) { $('bt-msg').textContent = '抓取失敗：' + e.message + '（可能是查詢過於頻繁，稍等再試）'; return; }
+  if (!rows.length) { $('bt-msg').textContent = `查無 ${stock} 在此區間的資料，請確認代號或日期`; return; }
+  const name = await fetchName(stock);
+  const results = [], full = {};
+  for (const ps of PRESETS) {
+    const r = runBacktestJS(rows, Object.assign({ capital: INIT_CASH }, ps.params));
+    if (r.error) continue; const m = r.metrics;
+    results.push({ key: ps.key, label: ps.label, desc: ps.desc, total_return: m.total_return, max_drawdown: m.max_drawdown, num_trades: m.num_trades, final: m.final });
+    full[ps.key] = r;
+  }
+  results.sort((a, b) => b.total_return - a.total_return);
+  const best = results[0], bf = full[best.key];
+  const period_text = `${rows[0].date} ~ ${rows[rows.length - 1].date}`;
+  $('bt-msg').textContent = '';
+  $('bt-result').classList.add('hide'); $('bt-trades-card').classList.add('hide');
+  $('auto-result').classList.remove('hide');
+  mascotReact(best.total_return);
+  const sign = best.total_return >= 0 ? '賺' : '賠';
+  $('auto-headline').innerHTML =
+    `${period_text}<br><b>${name}（${stock}）</b>用「<span class="accent">${best.label}</span>」最好<br>` +
+    `${sign}了 <span class="${cls(best.total_return)}">${pct(best.total_return)}</span>，100 萬會變成 <b>${fmt(best.final)}</b> 元`;
+  $('auto-table').innerHTML = results.map(x => {
+    const win = x.key === best.key;
+    return `<tr class="${win ? 'win-row' : ''}"><td><b>${x.label}</b>${win ? ' 🏆' : ''}</td><td class="desc">${x.desc}</td>
+      <td class="${cls(x.total_return)}">${pct(x.total_return)}</td><td class="neg">${pct(x.max_drawdown)}</td>
+      <td>${x.num_trades} 次</td><td>${fmt(x.final)}</td></tr>`;
+  }).join('');
+  if (autoChart) autoChart.destroy();
+  autoChart = new Chart($('auto-chart'), { type: 'line',
+    data: { labels: bf.dates, datasets: [
+      { label: best.label + '（最佳方法）', data: bf.strat_equity, borderColor: '#4d8dff', backgroundColor: 'rgba(77,141,255,.08)', fill: true, borderWidth: 2, pointRadius: 0, tension: .15 },
+      { label: '無腦長抱', data: bf.bh_equity, borderColor: '#6b7280', borderWidth: 1.5, borderDash: [5,4], pointRadius: 0, tension: .15 } ] },
+    options: CHART_OPTS });
+}
+
+/* ---------- 手動回測 ---------- */
+let chart;
+async function runBacktest() {
+  const stock = $('bt-stock').value.trim();
+  const start = $('bt-start').value, end = $('bt-end').value;
+  if (!stock) { $('bt-msg').textContent = '請輸入股票代號'; return; }
+  $('bt-msg').textContent = '抓取資料中…';
+  let rows;
+  try { rows = await fetchHistory(stock, start, end); }
+  catch (e) { $('bt-msg').textContent = '抓取失敗：' + e.message; return; }
+  if (!rows.length) { $('bt-msg').textContent = `查無 ${stock} 在此區間的資料`; return; }
+  const p = {
+    capital: +$('bt-capital').value, strategy: $('bt-strategy').value,
+    short: +$('bt-short').value, long: +$('bt-long').value,
+    period: +$('bt-period').value, oversold: +$('bt-oversold').value, overbought: +$('bt-overbought').value,
+    kd_period: +$('bt-kdperiod').value, kd_low: +$('bt-kdlow').value, kd_high: +$('bt-kdhigh').value,
+  };
+  const r = runBacktestJS(rows, p);
+  if (r.error) { $('bt-msg').textContent = r.error; return; }
+  $('bt-msg').textContent = ''; const m = r.metrics;
+  mascotReact(m.total_return);
+  $('auto-result').classList.add('hide');
+  $('bt-result').classList.remove('hide'); $('bt-trades-card').classList.remove('hide');
+  $('bt-metrics').innerHTML = [
+    ['期末資產', fmt(m.final) + ' 元', ''], ['總報酬率', pct(m.total_return), cls(m.total_return)],
+    ['年化報酬', pct(m.annual), cls(m.annual)], ['最大回撤', pct(m.max_drawdown), 'neg'],
+    ['勝率', m.win_rate == null ? '—' : pct(m.win_rate), ''], ['交易次數', m.num_trades + ' 次', ''],
+    ['買進持有報酬', pct(m.bh_return), cls(m.bh_return)],
+  ].map(([k,v,c]) => `<div class="metric"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join('');
+  $('bt-trades').innerHTML = r.trades.map(t => `<tr><td>${t.date}</td><td>${t.action}</td><td>${t.price.toFixed(2)}</td>
+    <td>${fmt(t.shares)}</td><td class="${cls(t.pnl)}">${t.pnl==null?'—':fmt(t.pnl)}</td></tr>`).join('')
+    || '<tr><td colspan="5" class="empty">期間內無交易</td></tr>';
+  if (chart) chart.destroy();
+  chart = new Chart($('bt-chart'), { type: 'line',
+    data: { labels: r.dates, datasets: [
+      { label: '策略淨值', data: r.strat_equity, borderColor: '#4d8dff', backgroundColor: 'rgba(77,141,255,.08)', fill: true, borderWidth: 2, pointRadius: 0, tension: .15 },
+      { label: '買進持有', data: r.bh_equity, borderColor: '#6b7280', borderWidth: 1.5, borderDash: [5,4], pointRadius: 0, tension: .15 } ] },
+    options: CHART_OPTS });
+}
+
+/* ---------- 模擬交易（localStorage） ---------- */
+const LS = 'stocktool_paper_v1';
+function loadPaper() { try { return JSON.parse(localStorage.getItem(LS)) || { cash: INIT_CASH, positions: {}, log: [] }; } catch (e) { return { cash: INIT_CASH, positions: {}, log: [] }; } }
+function savePaper(p) { localStorage.setItem(LS, JSON.stringify(p)); }
+function pushLog(p, stock, name, action, shares, price, amount) {
+  p.log.unshift({ ts: new Date().toLocaleString('sv'), stock, name, action, shares, price, amount });
+  p.log = p.log.slice(0, 30);
+}
+async function refreshPaper() {
+  $('pt-msg').textContent = '更新報價中…';
+  const p = loadPaper(); let mv = 0; const posArr = [];
+  for (const code of Object.keys(p.positions)) {
+    const pos = p.positions[code]; if (pos.shares <= 0) continue;
+    let price = pos.avg_cost; try { const q = await quote(code); if (q) price = q.price; } catch (e) {}
+    const m = pos.shares * price; mv += m;
+    posArr.push({ stock: code, name: pos.name, shares: pos.shares, avg_cost: pos.avg_cost, price,
+      market_value: Math.round(m), pnl: Math.round(m - pos.shares * pos.avg_cost), pnl_pct: pos.avg_cost ? price / pos.avg_cost - 1 : 0 });
+  }
+  $('pt-msg').textContent = '';
+  const total = p.cash + mv;
+  $('pt-summary').innerHTML = [
+    ['現金', fmt(p.cash) + ' 元', ''], ['持股市值', fmt(mv) + ' 元', ''], ['總資產', fmt(total) + ' 元', ''],
+    ['總損益', fmt(total - INIT_CASH) + ' 元', cls(total - INIT_CASH)], ['總報酬率', pct(total / INIT_CASH - 1), cls(total - INIT_CASH)],
+  ].map(([k,v,c]) => `<div class="metric"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join('');
+  $('pt-positions').innerHTML = posArr.length ? posArr.map(p =>
+    `<tr><td>${p.stock}</td><td>${p.name}</td><td>${fmt(p.shares)}</td><td>${p.avg_cost.toFixed(2)}</td>
+     <td>${p.price.toFixed(2)}</td><td>${fmt(p.market_value)}</td>
+     <td class="${cls(p.pnl)}">${fmt(p.pnl)}</td><td class="${cls(p.pnl)}">${pct(p.pnl_pct)}</td></tr>`).join('')
+    : '<tr><td colspan="8" class="empty">尚無持股</td></tr>';
+  $('pt-log').innerHTML = p.log.length ? p.log.map(l =>
+    `<tr><td>${l.ts}</td><td>${l.stock}</td><td>${l.name}</td><td>${l.action}</td>
+     <td>${fmt(l.shares)}</td><td>${l.price.toFixed(2)}</td><td>${fmt(l.amount)}</td></tr>`).join('')
+    : '<tr><td colspan="7" class="empty">尚無紀錄</td></tr>';
+}
+async function trade(action) {
+  const code = $('pt-stock').value.trim(), shares = +$('pt-shares').value;
+  if (!code || shares <= 0) { $('pt-msg').textContent = '輸入不完整'; return; }
+  $('pt-msg').textContent = '取得報價中…';
+  let q; try { q = await quote(code); } catch (e) {}
+  if (!q) { $('pt-msg').textContent = '查無報價，無法成交'; setMascot('worried', '查無報價，無法成交'); return; }
+  const p = loadPaper(); const price = q.price, name = q.name;
+  if (action === 'buy') {
+    const amount = shares * price * (1 + FEE);
+    if (amount > p.cash) { const msg = `資金不足，需 ${fmt(amount)}，現金 ${fmt(p.cash)}`; $('pt-msg').textContent = msg; setMascot('worried', msg); return; }
+    const pos = p.positions[code];
+    if (pos && pos.shares > 0) { const ns = pos.shares + shares; pos.avg_cost = (pos.shares * pos.avg_cost + shares * price * (1 + FEE)) / ns; pos.shares = ns; pos.name = name; }
+    else p.positions[code] = { name, shares, avg_cost: price * (1 + FEE) };
+    p.cash -= amount; pushLog(p, code, name, '買進', shares, price, Math.round(amount));
+  } else {
+    const pos = p.positions[code];
+    if (!pos || pos.shares < shares) { $('pt-msg').textContent = '持股不足'; setMascot('worried', '持股不足'); return; }
+    const proceeds = shares * price * (1 - FEE - TAX); pos.shares -= shares; p.cash += proceeds;
+    pushLog(p, code, name, '賣出', shares, price, Math.round(proceeds));
+  }
+  savePaper(p);
+  $('pt-msg').textContent = `已成交 ${name} @ ${price}`;
+  setMascot(action === 'buy' ? 'happy' : 'content', `${action === 'buy' ? '買進' : '賣出'} ${name} 成交 @ ${price}！`);
+  refreshPaper();
+}
+function resetPaper() {
+  if (!confirm('確定要清空持股與紀錄、把現金重置為 100 萬？')) return;
+  savePaper({ cash: INIT_CASH, positions: {}, log: [] });
+  refreshPaper();
+}
+</script>
+</body>
+</html>
