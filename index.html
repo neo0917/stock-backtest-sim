@@ -134,6 +134,7 @@
   <div class="card">
     <div class="row">
       <div><label>股票代號</label><input id="bt-stock" value="2330" placeholder="如 2330"></div>
+      <div><label>初始資金</label><input id="bt-capital" type="number" value="1000000" step="100000" style="width:130px"></div>
       <div><label>開始日期</label><input id="bt-start" type="date" style="width:160px"></div>
       <div><label>結束日期</label><input id="bt-end" type="date" style="width:160px"></div>
       <button onclick="runAuto()">🚀 自動回測</button>
@@ -152,7 +153,6 @@
     </div>
     <div id="adv-box" class="hide" style="margin-top:18px;border-top:1px dashed var(--border);padding-top:18px">
       <div class="row">
-        <div><label>初始資金</label><input id="bt-capital" type="number" value="1000000"></div>
         <div><label>策略</label>
           <select id="bt-strategy">
             <option value="ma" selected>均線交叉</option>
@@ -495,6 +495,7 @@ let autoChart;
 async function runAuto() {
   const stock = $('bt-stock').value.trim();
   const start = $('bt-start').value, end = $('bt-end').value;
+  const capital = +$('bt-capital').value || INIT_CASH;
   if (!stock) { $('bt-msg').textContent = '請輸入股票代號'; return; }
   $('bt-msg').textContent = '抓資料、自動試算中…';
   let rows;
@@ -504,7 +505,7 @@ async function runAuto() {
   const name = await fetchName(stock);
   const results = [], full = {};
   for (const ps of PRESETS) {
-    const r = runBacktestJS(rows, Object.assign({ capital: INIT_CASH }, ps.params));
+    const r = runBacktestJS(rows, Object.assign({ capital }, ps.params));
     if (r.error) continue; const m = r.metrics;
     results.push({ key: ps.key, label: ps.label, desc: ps.desc, total_return: m.total_return, max_drawdown: m.max_drawdown, num_trades: m.num_trades, final: m.final });
     full[ps.key] = r;
@@ -519,7 +520,7 @@ async function runAuto() {
   const sign = best.total_return >= 0 ? '賺' : '賠';
   $('auto-headline').innerHTML =
     `${period_text}<br><b>${name}（${stock}）</b>用「<span class="accent">${best.label}</span>」最好<br>` +
-    `${sign}了 <span class="${cls(best.total_return)}">${pct(best.total_return)}</span>，100 萬會變成 <b>${fmt(best.final)}</b> 元`;
+    `${sign}了 <span class="${cls(best.total_return)}">${pct(best.total_return)}</span>，本金 ${fmt(capital)} 會變成 <b>${fmt(best.final)}</b> 元`;
   $('auto-table').innerHTML = results.map(x => {
     const win = x.key === best.key;
     return `<tr class="${win ? 'win-row' : ''}"><td><b>${x.label}</b>${win ? ' 🏆' : ''}</td><td class="desc">${x.desc}</td>
